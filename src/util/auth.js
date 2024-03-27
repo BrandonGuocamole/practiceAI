@@ -7,14 +7,14 @@ import React, {
 } from "react";
 import queryString from "query-string";
 import supabase from "./supabase";
-import { useUser, updateUser } from "./db";
+import { useUser, updateUser, createUser } from "./db";
 import router from "next/router";
 import PageLoader from "./../components/PageLoader";
 import { getFriendlyPlanId } from "./prices";
 import analytics from "./analytics";
 
 // Whether to merge extra user data from database into `auth.user`
-const MERGE_DB_USER = true;
+const MERGE_DB_USER = false;
 
 // Whether to connect analytics session to `user.uid`
 const ANALYTICS_IDENTIFY = true;
@@ -48,23 +48,45 @@ function useAuthProvider() {
   useIdentifyUser(finalUser, { enabled: ANALYTICS_IDENTIFY });
 
   // Handle response from auth functions (`signup`, `signin`, and `signinWithProvider`)
-  const handleAuth = async (response) => {
-    const {
-      data: { user },
-    } = response;
+  // Handle response from auth functions (`signup`, `signin`, and `signinWithProvider`)
+// Handle response from auth functions (`signup`, `signin`, and `signinWithProvider`)
+const handleAuth = async (response) => {
+  const {
+    data: { user },
+  } = response;
 
-    // If email is unconfirmed throw error to be displayed in UI
-    // The user will be confirmed automatically if email confirmation is disabled in Supabase settings
-    if (!user.email_confirmed_at) {
-      throw new Error(
-        "Thanks for signing up! Please check your email to complete the process."
-      );
-    }
+  // If email is unconfirmed throw error to be displayed in UI
+  // The user will be confirmed automatically if email confirmation is disabled in Supabase settings
+  if (!user.email_confirmed_at) {
+    throw new Error(
+      "Thanks for signing up! Please check your email to complete the process."
+    );
+  }
 
-    // Update user in state
-    setUser(user);
-    return user;
-  };
+  // Create a new user record in the "users" table
+  const newUser = await createUser({
+    id: user.id,
+    email: user.email,
+    name: user.user_metadata.full_name,
+  });
+
+  console.log("New user created:", newUser);
+
+  // Update user in state
+  setUser(user);
+  return user;
+
+  // Create a new user record in the "users" table
+  await createUser({
+    id: user.id,
+    email: user.email,
+    name: user.user_metadata.full_name,
+  });
+
+  // Update user in state
+  setUser(user);
+  return user;
+};
 
   const signup = (email, password) => {
     return supabase.auth

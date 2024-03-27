@@ -134,3 +134,182 @@ export function QueryClientProvider(props) {
     </QueryClientProviderBase>
   );
 }
+
+
+// ... existing code ...
+
+/**** CLASSES ****/
+
+// Fetch class data
+export function useClass(id) {
+  return useQuery(
+    ["class", { id }],
+    () =>
+      supabase.from("classes").select().eq("id", id).single().then(handle),
+    { enabled: !!id }
+  );
+}
+
+// Fetch all classes by owner
+export function useClassesByOwner(owner) {
+  return useQuery(
+    ["classes", { owner }],
+    () =>
+      supabase
+        .from("classes")
+        .select()
+        .eq("owner", owner)
+        .order("createdAt", { ascending: false })
+        .then(handle),
+    { enabled: !!owner }
+  );
+}
+
+// Create a new class
+export async function createClass(data) {
+  console.log("Creating class with data:", data);
+  const response = await supabase.from("classes").insert([data]).then(handle);
+  await client.invalidateQueries(["classes"]);
+  return response;
+}
+
+// Update a class
+export async function updateClass(id, data) {
+  const response = await supabase
+    .from("classes")
+    .update(data)
+    .eq("id", id)
+    .then(handle);
+  await Promise.all([
+    client.invalidateQueries(["class", { id }]),
+    client.invalidateQueries(["classes"]),
+  ]);
+  return response;
+}
+
+// Delete a class
+export async function deleteClass(id) {
+  const response = await supabase
+    .from("classes")
+    .delete()
+    .eq("id", id)
+    .then(handle);
+  await Promise.all([
+    client.invalidateQueries(["class", { id }]),
+    client.invalidateQueries(["classes"]),
+  ]);
+  return response;
+}
+
+export async function createUser(data) {
+  const response = await supabase.from("users").insert([data]).then(handle);
+  await client.invalidateQueries(["users"]);
+  return response;
+}
+
+/**** DOCUMENTS ****/
+
+// Fetch document data
+export function useDocument(id) {
+  return useQuery(
+    ["document", { id }],
+    () =>
+      supabase.from("documents").select().eq("id", id).single().then(handle),
+    { enabled: !!id }
+  );
+}
+
+// Fetch documents by class ID
+export function useDocumentsByClass(classId) {
+  return useQuery(
+    ['documents', classId],
+    () =>
+      supabase
+        .from('documents')
+        .select()
+        .eq('class_id', classId)
+        .order('createdAt', { ascending: false })
+        .then(handle),
+    { enabled: !!classId }
+  );
+}
+
+// Create a new document
+export async function createDocument(classId, data) {
+  const fileExt = data.get("file").name.split(".").pop();
+  const fileName = `${Date.now()}.${fileExt}`;
+  const filePath = `${classId}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("documents")
+    .upload(filePath, data.get("file"));
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!userData || !userData.user) {
+    throw new Error("No authenticated user found");
+  }
+
+
+  const { data: document, error: insertError } = await supabase
+    .from("documents")
+    .insert({
+      class_id: classId,
+      title: data.get("title"),
+      file_path: filePath,
+      owner_id: userData.user.id,
+    })
+    .single();
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  await client.invalidateQueries(["documents", classId]);
+  return document;
+}
+
+// Update a document
+export async function updateDocument(id, data) {
+  const response = await supabase.storage
+    .from("documents")
+    .update(`${data.get("file").name}`, data.get("file"))
+    .eq("id", id)
+    .then(({ data, error }) => {
+      if (error) {
+        throw error;
+      }
+      return supabase
+        .from("documents")
+        .update({ title: data.get("title") })
+        .eq("id", id);
+    })
+    .then(handle);
+  await Promise.all([
+    client.invalidateQueries(["document", { id }]),
+    client.invalidateQueries(["documents"]),
+  ]);
+  return response;
+}
+
+// Delete a document
+export async function deleteDocument(id) {
+  const response = await supabase
+    .from("documents")
+    .delete()
+    .eq("id", id)
+    .then(handle);
+  await Promise.all([
+    client.invalidateQueries(["document", { id }]),
+    client.invalidateQueries(["documents"]),
+  ]);
+  return response;
+}
